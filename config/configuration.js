@@ -7,13 +7,11 @@ configuration.PORT = process.env.PORT;
 configuration.JWT_SK = process.env.JWT_SK;
 configuration.JWT_REFRESH_SK = process.env.JWT_REFRESH_SK;
 configuration.JWT_RESET_SK = process.env.JWT_RESET_SK;
-configuration.EMAIL_SERVICE = process.env.EMAIL_SERVICE;
-configuration.EMAIL_HOST = process.env.EMAIL_HOST;
-configuration.EMAIL_PORT = process.env.EMAIL_PORT;
-configuration.EMAIL_SECURE = process.env.EMAIL_SECURE;
-configuration.EMAIL_USER = process.env.EMAIL_USER;
-configuration.EMAIL_PASS = process.env.EMAIL_PASS;
-configuration.EMAIL_FROM = process.env.EMAIL_FROM;
+configuration.BREVO_API_KEY = process.env.BREVO_API_KEY;
+configuration.EMAIL_FROM_NAME =
+  process.env.EMAIL_FROM_NAME || "Mini CRM";
+configuration.EMAIL_FROM_ADDRESS =
+  process.env.EMAIL_FROM_ADDRESS
 configuration.FRONTEND_URL = process.env.FRONTEND_URL;
 
 

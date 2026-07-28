@@ -1,37 +1,4 @@
-import nodemailer from "nodemailer";
 import configuration from "../config/configuration.js";
-
-const createTransporter = () => {
-  const commonOptions = {
-    auth: {
-      user: configuration.EMAIL_USER,
-      pass: configuration.EMAIL_PASS,
-    },
-
-    connectionTimeout: 20_000,
-    greetingTimeout: 20_000,
-    socketTimeout: 30_000,
-  };
-
-  if (configuration.EMAIL_HOST) {
-    return nodemailer.createTransport({
-      ...commonOptions,
-
-      host: configuration.EMAIL_HOST,
-      port: Number(configuration.EMAIL_PORT || 587),
-      secure: configuration.EMAIL_SECURE === "true",
-
-      tls: {
-        servername: configuration.EMAIL_HOST,
-        minVersion: "TLSv1.2",
-      },
-    });
-  }
-
-  throw new Error("Email configuration is missing.");
-};
-
-const transporter = createTransporter();
 
 const emailTemplates = {
   resetPasswordOtp: ({ otp }) => ({
@@ -68,14 +35,36 @@ const emailTemplates = {
 };
 
 export const verifyEmailConnection = async () => {
+  if (!configuration.BREVO_API_KEY) {
+    throw new Error("BREVO_API_KEY is missing");
+  }
+
+  if (!configuration.EMAIL_FROM_ADDRESS) {
+    throw new Error("EMAIL_FROM_ADDRESS is missing");
+  }
+
+  console.log("Brevo email API configured successfully");
+};
+
+
+///test
+export const sendTestEmail = async () => {
   try {
-    await transporter.verify();
-    console.log("Email server connected successfully");
-  } catch (error) {
-    console.error(
-      "Email server connection failed:",
-      error?.message || error,
+    const result = await sendMail(
+      "verifyAccountOtp",
+      "veereshnaik.swio@gmail.com",
+      {
+        otp: "123456",
+      },
     );
+
+    console.log("✅ Test email sent successfully");
+    console.log(result);
+
+    return result;
+  } catch (error) {
+    console.error("❌ Test email failed");
+    console.error(error);
 
     throw error;
   }
@@ -92,29 +81,66 @@ export const sendMail = async (templateName, to, data = {}) => {
     throw new Error("A valid recipient email address is required");
   }
 
+  const recipient = to.trim().toLowerCase();
   const { subject, text, html } = template(data);
 
   try {
-    return await transporter.sendMail({
-      from: configuration.EMAIL_FROM || configuration.EMAIL_USER,
-      to: to.trim().toLowerCase(),
-      subject,
-      text,
-      html,
+    const response = await fetch(
+      "https://api.brevo.com/v3/smtp/email",
+      {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          "api-key": configuration.BREVO_API_KEY,
+        },
+        body: JSON.stringify({
+          sender: {
+            name: configuration.EMAIL_FROM_NAME,
+            email: configuration.EMAIL_FROM_ADDRESS,
+          },
+          to: [
+            {
+              email: recipient,
+            },
+          ],
+          subject,
+          textContent: text,
+          htmlContent: html,
+        }),
+      },
+    );
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        result?.message ||
+          `Brevo API request failed with status ${response.status}`,
+      );
+    }
+
+    console.log("Email sent successfully:", {
+      recipient,
+      templateName,
+      messageId: result?.messageId,
     });
+
+    return result;
   } catch (error) {
     console.error("Email sending failed:", {
       templateName,
-      recipient: to,
-      code: error?.code,
-      command: error?.command,
+      recipient,
       message: error?.message,
     });
 
     throw new Error(
-      `Could not send email: ${error?.message || "Unknown email error"}`,
+      `Could not send email: ${
+        error?.message || "Unknown email error"
+      }`,
     );
   }
 };
 
 export default sendMail;
+
