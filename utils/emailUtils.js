@@ -1,5 +1,8 @@
+import dns from "node:dns";
 import nodemailer from "nodemailer";
 import configuration from "../config/configuration.js";
+
+dns.setDefaultResultOrder("ipv4first");
 
 const createTransporter = () => {
   if (configuration.EMAIL_HOST) {

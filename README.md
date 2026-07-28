@@ -109,6 +109,12 @@ EMAIL_FROM="Mini CRM <your_email@example.com>"
 REDIS_URL=redis://default:password@your-upstash-host.upstash.io:6379
 ```
 
+Email notes:
+
+- For Gmail SMTP, use an App Password, not the normal Gmail password.
+- Recommended Gmail SMTP settings are `EMAIL_HOST=smtp.gmail.com`, `EMAIL_PORT=587`, and `EMAIL_SECURE=false`.
+- The mail utility prefers IPv4 DNS resolution because some production hosts cannot reach Gmail SMTP over IPv6 and may otherwise throw `connect ENETUNREACH ... :587`.
+
 For Render production:
 
 ```env
