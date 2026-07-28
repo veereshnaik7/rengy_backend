@@ -2,6 +2,14 @@
 
 Backend API for a full-stack MERN mini-CRM application. It provides secure authentication, email OTP verification, JWT refresh-token flow, protected CRM contact APIs, activity logs, Redis-backed login rate limiting, MongoDB persistence, and Render deployment support.
 
+## Live Project Links
+
+- Live backend base URL: https://rengy-backend-nrla.onrender.com/
+- Live backend API URL: https://rengy-backend-nrla.onrender.com/api
+- Live frontend URL: https://rengy-frontend-lake.vercel.app/
+- Backend GitHub repository: https://github.com/veereshnaik7/rengy_backend
+- Frontend GitHub repository: https://github.com/veereshnaik7/rengy_frontend
+
 ## Project Status
 
 This backend currently implements the required assignment backend features:
@@ -80,47 +88,35 @@ backend/
   package.json
 ```
 
-## Environment Variables
-
-Create `backend/.env` with these values:
-
-```env
-NODE_ENV=development
-PORT=5000
-
-MONGODB_DATABASE=mini_crm
-MONGODB_URL_LOCAL=mongodb://127.0.0.1:27017
-MONGODB_URL_PROD=mongodb+srv://username:password@cluster.mongodb.net
-
-JWT_SK=replace_with_access_token_secret
-JWT_REFRESH_SK=replace_with_refresh_token_secret
-JWT_RESET_SK=replace_with_reset_token_secret
-
-FRONTEND_URL=http://localhost:5173
-
-EMAIL_SERVICE=gmail
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_SECURE=false
-EMAIL_USER=your_email@example.com
-EMAIL_PASS=your_email_app_password
-EMAIL_FROM="Mini CRM <your_email@example.com>"
-
-REDIS_URL=redis://default:password@your-upstash-host.upstash.io:6379
-```
+## Production Environment Variables
 
 Email notes:
 
-- For Gmail SMTP, use an App Password, not the normal Gmail password.
-- Recommended Gmail SMTP settings are `EMAIL_HOST=smtp.gmail.com`, `EMAIL_PORT=587`, and `EMAIL_SECURE=false`.
+- The project uses Brevo free SMTP for OTP emails.
+- Brevo free SMTP supports up to 300 emails per day on the free plan.
+- Recommended Brevo SMTP settings are `EMAIL_HOST=smtp-relay.brevo.com`, `EMAIL_PORT=587`, and `EMAIL_SECURE=false`.
+- If using Gmail SMTP instead, use an App Password, not the normal Gmail password.
 - The mail utility prefers IPv4 DNS resolution because some production hosts cannot reach Gmail SMTP over IPv6 and may otherwise throw `connect ENETUNREACH ... :587`.
 
-For Render production:
+Use this env format for Render production:
 
 ```env
 NODE_ENV=production
-PORT=10000
-FRONTEND_URL=https://your-frontend-domain.vercel.app
+PORT=3000
+MONGODB_DATABASE=mini_crm
+MONGODB_URL_PROD=mongodb+srv://<username>:<password>@<cluster>/<database>
+JWT_SK=<access_token_secret>
+JWT_REFRESH_SK=<refresh_token_secret>
+JWT_RESET_SK=<reset_token_secret>
+FRONTEND_URL=https://rengy-frontend-lake.vercel.app
+EMAIL_SERVICE=brevo
+EMAIL_HOST=smtp-relay.brevo.com
+EMAIL_PORT=587
+EMAIL_SECURE=false
+EMAIL_USER=<brevo_smtp_login>
+EMAIL_PASS=<brevo_smtp_key>
+EMAIL_FROM="Rengy CRM <your_verified_sender_email>"
+REDIS_URL=redis://default:<password>@<upstash-host>.upstash.io:6379
 ```
 
 When `NODE_ENV=production`, the backend uses `MONGODB_URL_PROD` and secure cross-site cookies with `sameSite=none`.
@@ -156,13 +152,13 @@ npm test
 Local:
 
 ```txt
-http://localhost:5000/api
+http://localhost:3000/api
 ```
 
 Render:
 
 ```txt
-https://your-render-service.onrender.com/api
+https://rengy-backend-nrla.onrender.com/api
 ```
 
 ## Authentication Flow
@@ -171,13 +167,15 @@ https://your-render-service.onrender.com/api
 2. Backend hashes password with bcrypt.
 3. Backend creates the user as `verified: false`.
 4. Backend generates a 6-digit OTP and emails it to the user.
-5. User submits OTP through the verify API.
-6. Backend marks user as verified.
-7. User signs in.
-8. Backend creates an access token and refresh token.
-9. Tokens are stored in HTTP-only cookies.
-10. Protected APIs validate the access token through middleware.
-11. Refresh API creates a new access token when the old access token expires.
+5. If an unverified user signs up again with the same email, backend accepts the latest submitted signup data except email, updates the account, and sends the active OTP again.
+6. If the previous OTP is expired or missing, backend generates a new OTP before sending.
+7. User submits OTP through the verify API.
+8. Backend marks user as verified.
+9. User signs in.
+10. Backend creates an access token and refresh token.
+11. Tokens are stored in HTTP-only cookies.
+12. Protected APIs validate the access token through middleware.
+13. Refresh API creates a new access token when the old access token expires.
 
 ## Security
 
@@ -289,6 +287,31 @@ and no activity log is created.
 
 All protected routes require a valid `accessToken` cookie.
 
+## Postman Collection
+
+The backend repo includes a ready-to-import Postman collection:
+
+```txt
+postman_collection.json
+```
+
+Collection defaults:
+
+```txt
+Local baseUrl: http://localhost:3000/api
+Render baseUrl: https://rengy-backend-nrla.onrender.com/api
+```
+
+How to use it:
+
+1. Import `postman_collection.json` into Postman.
+2. Keep Postman cookies enabled because auth uses HTTP-only cookies.
+3. Run `Sign Up`, then enter the emailed OTP in the `otp` collection variable.
+4. Run `Verify Account`, then `Sign In`.
+5. Run protected profile, contacts, and activity-log requests.
+
+The `Create Contact` request automatically stores the created contact id in the `contactId` collection variable for edit, delete, and contact activity-log requests.
+
 ### Health
 
 #### GET `/`
@@ -303,7 +326,7 @@ Returns the main API router health message.
 
 #### POST `/api/auth/register`
 
-Create a new user and send verification OTP.
+Create a new user and send verification OTP. If the email already belongs to an unverified user, the backend updates the account with the latest submitted signup data except email and reuses the active verification OTP. A new OTP is generated only when the previous OTP is expired or missing.
 
 Request:
 
@@ -480,6 +503,38 @@ Response includes:
 }
 ```
 
+#### GET `/api/contacts/export/csv`
+
+Protected. Downloads a CSV file containing all matching contacts for the logged-in user.
+
+Query params:
+
+```txt
+search=demo
+status=Lead
+```
+
+Examples:
+
+```txt
+GET /api/contacts/export/csv
+GET /api/contacts/export/csv?search=asha
+GET /api/contacts/export/csv?status=Customer
+```
+
+Exported fields:
+
+- User ID
+- Contact ID
+- Name
+- Email
+- Phone
+- Company
+- Status
+- Notes
+- Created At
+- Updated At
+
 #### POST `/api/contacts`
 
 Protected. Add a contact.
@@ -599,7 +654,11 @@ Current test coverage includes:
 
 ### 1. Push Backend To GitHub
 
-Create a GitHub repository for the backend and push this backend folder.
+Backend repository:
+
+```txt
+https://github.com/veereshnaik7/rengy_backend
+```
 
 ### 2. Create Render Web Service
 
@@ -626,35 +685,35 @@ Set these in Render:
 
 ```env
 NODE_ENV=production
-PORT=10000
+PORT=3000
 MONGODB_DATABASE=mini_crm
-MONGODB_URL_PROD=mongodb+srv://...
-JWT_SK=...
-JWT_REFRESH_SK=...
-JWT_RESET_SK=...
-FRONTEND_URL=https://your-frontend-domain.vercel.app
-EMAIL_SERVICE=gmail
-EMAIL_HOST=smtp.gmail.com
+MONGODB_URL_PROD=mongodb+srv://<username>:<password>@<cluster>/<database>
+JWT_SK=<access_token_secret>
+JWT_REFRESH_SK=<refresh_token_secret>
+JWT_RESET_SK=<reset_token_secret>
+FRONTEND_URL=https://rengy-frontend-lake.vercel.app
+EMAIL_SERVICE=brevo
+EMAIL_HOST=smtp-relay.brevo.com
 EMAIL_PORT=587
 EMAIL_SECURE=false
-EMAIL_USER=...
-EMAIL_PASS=...
-EMAIL_FROM=...
-REDIS_URL=redis://default:password@your-upstash-host.upstash.io:6379
+EMAIL_USER=<brevo_smtp_login>
+EMAIL_PASS=<brevo_smtp_key>
+EMAIL_FROM="Rengy CRM <your_verified_sender_email>"
+REDIS_URL=redis://default:<password>@<upstash-host>.upstash.io:6379
 ```
 
 ### 4. Deploy
 
-After deployment, Render gives a live backend URL like:
+Live backend URL:
 
 ```txt
-https://your-service-name.onrender.com
+https://rengy-backend-nrla.onrender.com/
 ```
 
 Use this as the backend API URL:
 
 ```txt
-https://your-service-name.onrender.com/api
+https://rengy-backend-nrla.onrender.com/api
 ```
 
 ## Upstash Redis Setup
@@ -670,10 +729,16 @@ https://your-service-name.onrender.com/api
 Set the frontend API env variable to the deployed backend API:
 
 ```env
-VITE_API_URL=https://your-service-name.onrender.com/api
+VITE_API_URL=https://rengy-backend-nrla.onrender.com/api
 ```
 
-Also set backend `FRONTEND_URL` to the deployed frontend domain so CORS and cookies work correctly.
+Also set backend `FRONTEND_URL` exactly to:
+
+```env
+FRONTEND_URL=https://rengy-frontend-lake.vercel.app
+```
+
+Do not add a trailing slash to `FRONTEND_URL`; CORS checks the exact browser origin.
 
 ## Assignment Checklist
 
@@ -701,17 +766,18 @@ Backend requirements:
 
 Full project deliverables:
 
-- [ ] Live frontend URL
-- [ ] Live backend API URL
-- [ ] GitHub frontend repository
-- [ ] GitHub backend repository
+- [x] Live frontend URL: https://rengy-frontend-lake.vercel.app/
+- [x] Live backend API URL: https://rengy-backend-nrla.onrender.com/api
+- [x] GitHub frontend repository: https://github.com/veereshnaik7/rengy_frontend
+- [x] GitHub backend repository: https://github.com/veereshnaik7/rengy_backend
 - [x] API documentation in README
-- [x] Postman collection available in project root
+- [x] Postman collection available at `postman_collection.json`
 
 ## Notes
 
 - Existing users already marked as verified in MongoDB remain verified.
 - New signups require OTP verification before login.
+- Unverified users can sign up again with the same email; submitted signup details are updated except email, and the existing active OTP is reused until it expires.
 - Activity logs are contact-specific and include changed fields.
 - Contact pagination is 10 per page.
 - Activity log pagination is 3 per page.

@@ -35,13 +35,76 @@ class AuthController {
         );
       }
 
-      const existingUser = await User.findOne({ email });
+      const normalizedEmail = email.trim().toLowerCase();
+      const existingUser = await User.findOne({ email: normalizedEmail });
 
       if (existingUser) {
-        return ResponseHandler.sendErrorResponse(
+        if (existingUser.verified) {
+          return ResponseHandler.sendErrorResponse(
+            res,
+            "User already exists",
+            409,
+          );
+        }
+
+        const nextName = name.trim();
+        const nextPassword = await hashPassword(password);
+
+        existingUser.name = nextName;
+        existingUser.password = nextPassword;
+        await existingUser.save();
+
+        const activeOtp = await Otp.findOne({
+          userId: existingUser._id,
+          purpose: "EMAIL_VERIFY",
+          expiresAt: { $gt: new Date() },
+        }).sort({ createdAt: -1 });
+
+        let otp = activeOtp?.otp;
+
+        if (!otp) {
+          otp = generateOtp();
+
+          await Otp.deleteMany({
+            userId: existingUser._id,
+            purpose: "EMAIL_VERIFY",
+          });
+
+          await Otp.create({
+            userId: existingUser._id,
+            otp,
+            purpose: "EMAIL_VERIFY",
+            expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+          });
+        }
+
+        try {
+          await sendMail("verifyAccountOtp", existingUser.email, { otp });
+        } catch (mailError) {
+          await Otp.deleteMany({
+            userId: existingUser._id,
+            purpose: "EMAIL_VERIFY",
+          });
+
+          return ResponseHandler.sendErrorResponse(
+            res,
+            `Could not send verification email: ${mailError.message}`,
+            "Email delivery failed",
+            500,
+          );
+        }
+
+        return ResponseHandler.sendSuccessResponse(
           res,
-          "User already exists",
-          409,
+          {
+            id: existingUser._id,
+            name: existingUser.name,
+            email: existingUser.email,
+            verified: existingUser.verified,
+            role: existingUser.role,
+          },
+          "Signup details updated. Verification OTP sent. Please verify your account.",
+          200,
         );
       }
 
@@ -49,7 +112,7 @@ class AuthController {
 
       const newUser = await User.create({
         name,
-        email,
+        email: normalizedEmail,
         password: hashedPassword,
         verified: false,
       });

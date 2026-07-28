@@ -24,6 +24,35 @@ const cleanValue = (value) => {
   return String(value);
 };
 
+const escapeCsvValue = (value) => {
+  if (value === undefined || value === null) {
+    return "";
+  }
+
+  return `"${String(value).replaceAll('"', '""')}"`;
+};
+
+const buildContactFilter = ({ userId, search = "", status = "all" }) => {
+  const filter = { userId };
+
+  if (status !== "all") {
+    if (!CONTACT_STATUSES.includes(status)) {
+      return { error: "Invalid contact status" };
+    }
+
+    filter.status = status;
+  }
+
+  if (search) {
+    filter.$or = [
+      { name: { $regex: search, $options: "i" } },
+      { email: { $regex: search, $options: "i" } },
+    ];
+  }
+
+  return { filter };
+};
+
 const buildCreatedDetails = (contact) =>
   trackedFields.map((field) => ({
     field: fieldLabels[field],
@@ -120,22 +149,14 @@ class ContactController {
       const skip = (page - 1) * limit;
       const search = (req.query.search || "").trim();
       const status = (req.query.status || "all").trim();
+      const { filter, error } = buildContactFilter({
+        userId: req.user.id,
+        search,
+        status,
+      });
 
-      const filter = { userId: req.user.id };
-
-      if (status !== "all") {
-        if (!CONTACT_STATUSES.includes(status)) {
-          return ResponseHandler.sendErrorResponse(res, "Invalid contact status", 400);
-        }
-
-        filter.status = status;
-      }
-
-      if (search) {
-        filter.$or = [
-          { name: { $regex: search, $options: "i" } },
-          { email: { $regex: search, $options: "i" } },
-        ];
+      if (error) {
+        return ResponseHandler.sendErrorResponse(res, error, 400);
       }
 
       const [contacts, total, statusCounts] = await Promise.all([
@@ -174,6 +195,66 @@ class ContactController {
         "Contacts fetched successfully",
         200,
       );
+    } catch (error) {
+      return ResponseHandler.sendErrorResponse(res, error.message, 500);
+    }
+  }
+
+  static async exportContacts(req, res) {
+    try {
+      const search = (req.query.search || "").trim();
+      const status = (req.query.status || "all").trim();
+      const { filter, error } = buildContactFilter({
+        userId: req.user.id,
+        search,
+        status,
+      });
+
+      if (error) {
+        return ResponseHandler.sendErrorResponse(res, error, 400);
+      }
+
+      const contacts = await Contact.find(filter).sort({ updatedAt: -1 }).lean();
+
+      const headers = [
+        "User ID",
+        "Contact ID",
+        "Name",
+        "Email",
+        "Phone",
+        "Company",
+        "Status",
+        "Notes",
+        "Created At",
+        "Updated At",
+      ];
+
+      const rows = contacts.map((contact) => [
+        contact.userId,
+        contact._id,
+        contact.name,
+        contact.email,
+        contact.phone,
+        contact.company,
+        contact.status,
+        contact.notes || "",
+        contact.createdAt ? new Date(contact.createdAt).toISOString() : "",
+        contact.updatedAt ? new Date(contact.updatedAt).toISOString() : "",
+      ]);
+
+      const csv = [headers, ...rows]
+        .map((row) => row.map(escapeCsvValue).join(","))
+        .join("\n");
+
+      const fileDate = new Date().toISOString().slice(0, 10);
+
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="rengy-contacts-${fileDate}.csv"`,
+      );
+
+      return res.status(200).send(csv);
     } catch (error) {
       return ResponseHandler.sendErrorResponse(res, error.message, 500);
     }

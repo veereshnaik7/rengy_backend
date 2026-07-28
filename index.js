@@ -68,6 +68,7 @@ const corsOptions = {
   },
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   credentials: true,
+  exposedHeaders: ["Content-Disposition"],
 };
 
 app.use(cors(corsOptions));

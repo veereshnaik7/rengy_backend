@@ -5,6 +5,7 @@ import ContactController from "../controllers/contact.controller.js";
 const router = express.Router();
 
 router.get("/", verifyToken, ContactController.getContacts);
+router.get("/export/csv", verifyToken, ContactController.exportContacts);
 router.post("/", verifyToken, ContactController.createContact);
 router.patch("/:id", verifyToken, ContactController.updateContact);
 router.delete("/:id", verifyToken, ContactController.deleteContact);

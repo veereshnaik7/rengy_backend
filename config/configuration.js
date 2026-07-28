@@ -26,7 +26,6 @@ if (process.env.NODE_ENV == "development") {
   configuration.env = process.env.NODE_ENV || "development";
 }
 
-console.log(configuration.MONGODB_URL)
 
 
 export default configuration;
