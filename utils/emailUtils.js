@@ -1,20 +1,5 @@
-import dns from "node:dns";
 import nodemailer from "nodemailer";
 import configuration from "../config/configuration.js";
-
-dns.setDefaultResultOrder("ipv4first");
-
-const smtpLookup = (hostname, options, callback) => {
-  dns.lookup(
-    hostname,
-    {
-      ...options,
-      family: 4,
-      all: false,
-    },
-    callback,
-  );
-};
 
 const createTransporter = () => {
   const commonOptions = {
@@ -23,11 +8,9 @@ const createTransporter = () => {
       pass: configuration.EMAIL_PASS,
     },
 
-    lookup: smtpLookup,
-
-    connectionTimeout: 15_000,
-    greetingTimeout: 15_000,
-    socketTimeout: 20_000,
+    connectionTimeout: 20_000,
+    greetingTimeout: 20_000,
+    socketTimeout: 30_000,
   };
 
   if (configuration.EMAIL_HOST) {
@@ -40,21 +23,12 @@ const createTransporter = () => {
 
       tls: {
         servername: configuration.EMAIL_HOST,
+        minVersion: "TLSv1.2",
       },
     });
   }
 
-  if (configuration.EMAIL_SERVICE) {
-    return nodemailer.createTransport({
-      ...commonOptions,
-      service: configuration.EMAIL_SERVICE,
-    });
-  }
-
-  return nodemailer.createTransport({
-    ...commonOptions,
-    service: "gmail",
-  });
+  throw new Error("Email configuration is missing.");
 };
 
 const transporter = createTransporter();
@@ -122,10 +96,7 @@ export const sendMail = async (templateName, to, data = {}) => {
 
   try {
     return await transporter.sendMail({
-      from:
-        configuration.EMAIL_FROM ||
-        configuration.EMAIL_USER,
-
+      from: configuration.EMAIL_FROM || configuration.EMAIL_USER,
       to: to.trim().toLowerCase(),
       subject,
       text,
